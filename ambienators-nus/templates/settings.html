@@ -62,7 +62,7 @@
         <form class="form-horizontal" action="/settings" method="post">
           <fieldset>
 
-            <legend>Temperature settings</legend>
+            <legend>Temperature</legend>
 
             <div class="form-group">
               <label class="col-lg-1 control-label"></label>
@@ -102,10 +102,32 @@
           </fieldset>
           <!-- End temperature settings -->
 
+          <fieldset>
+
+            <legend>Date and Time</legend>
+
+            <div class="form-group"><br/>
+              <label class="col-lg-2 control-label">Timezone</label>
+              <div class="col-lg-10">
+                
+
+                <label for="select" class="col-lg-1 control-label">UTC</label>
+                <!-- Number -->
+                <div class="col-lg-2">
+                  <input type="number" step="0.25" min="-12.00" max="14.00" class="form-control" id="input-time-zone" name="input-time-zone" placeholder="0.00" value={{ person.time_zone }}>
+                </div>
+                <br/>
+                <br/>
+              </div>
+            </div>
+            <div class="extra-space"></div>
+
+          </fieldset>
+
 
           <fieldset>
 
-            <legend>Notification settings</legend>
+            <legend>Notifications</legend>
 
             <div class="form-group">
               <label class="col-lg-2 control-label">How should I be notified?</label>
@@ -246,7 +268,7 @@
 
           <fieldset>
 
-            <legend>History settings</legend>
+            <legend>History</legend>
 
             <div class="form-group">
               <label class="col-lg-2 control-label">How often should history be logged?</label>
