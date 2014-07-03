@@ -18,6 +18,9 @@ class Persons(ndb.Model):
     # celsius, fahrenheit or kelvin
     temperature_unit = ndb.StringProperty()
 
+    # Timezone
+    time_zone = ndb.FloatProperty()
+
     # By time or by parameters 
     notify_type = ndb.StringProperty(repeated=True)
 
@@ -77,6 +80,8 @@ class MainPageUser(webapp2.RequestHandler):
 
             person.temperature_unit = 'celsius'
 
+            person.time_zone = 8.00
+
             person.notify_type = ['by-time']
 
             person.notify_time_value = 4
@@ -117,12 +122,15 @@ class Temperature(webapp2.RequestHandler):
         qry = ArduinoSensorData.query().order(-ArduinoSensorData.lastupdate).fetch(1)
         
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+
         if user:  # signed in already
             template_values = {
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
                 'temperature': qry.temperature,
-                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'datetimeLastUpdate': qry.lastupdate.strftime("%d %b %y, %I.%M.%S %p"),
                 }
             template = jinja_environment.get_template('temperature.html')
@@ -135,12 +143,14 @@ class Light(webapp2.RequestHandler):
 
     def get(self):
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+
         if user:  # signed in already
             sense = ArduinoSensorData.get_or_insert('1')
             template_values = {
-                'listToRowData': listToRowData(sense.list),
                 'light': str(sense.light),
-                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
@@ -155,6 +165,9 @@ class Motion(webapp2.RequestHandler):
 
     def get(self):
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+        
         if user:  # signed in already
             sense = ArduinoSensorData.get_or_insert('1')
             if (sense.movement):
@@ -163,7 +176,7 @@ class Motion(webapp2.RequestHandler):
                 motionStatusString = "not present"
             template_values = {
                 'datetimeLastMovement': str(sense.lastmovement.strftime("%d %b %y, %I.%M.%S %p")),
-                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
                 'motionStatusString': motionStatusString,
                 'user_mail': users.get_current_user().email(),
@@ -187,7 +200,7 @@ class History(webapp2.RequestHandler):
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
                 'person': person,
-                'datetime': datetime.datetime.now(),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
             }
             template = jinja_environment.get_template('history.html')
             self.response.out.write(template.render(template_values))
@@ -219,6 +232,8 @@ class Settings(webapp2.RequestHandler):
         person = parent.get()
 
         person.temperature_unit = self.request.get('select-temp-unit')
+
+        person.time_zone = float(self.request.get('input-time-zone'))
 
         person.notify_type = self.request.get_all('notify-type')
 
