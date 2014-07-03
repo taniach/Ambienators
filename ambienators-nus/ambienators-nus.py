@@ -51,14 +51,34 @@ class Persons(ndb.Model):
     num_readings = ndb.IntegerProperty()
  
 class ArduinoSensorData(ndb.Model):
-    temperature = ndb.FloatProperty()
+    temp = ndb.IntegerProperty()
+    light = ndb.IntegerProperty()
+    movement = ndb.IntegerProperty()
+    lastmovement = ndb.DateTimeProperty(auto_now_add=True)
     lastupdate = ndb.DateTimeProperty(auto_now_add=True)
 
  
 class ArduinoPost(webapp2.RequestHandler):
     def post(self):
-        sensordata = ArduinoSensorData(temperature=self.request.get('temp'))
-        sensordata.put()
+        sensordata = ArduinoSensorData.get_or_insert('1')
+
+        try:
+            temp = int(self.request.get('temp'))
+            movement = int(self.request.get('movement'))
+            moves = int(self.request.get('moves'))
+            light = int(self.request.get('light'))
+            sensordata.temp = temp
+            sensordata.light = light
+            sensordata.lastupdate = datetime.datetime.now()
+            sensordata.movement = movement
+            
+            if movement == 1:
+                sensordata.lastmovement = datetime.datetime.now()
+
+            sensordata.put()
+
+        except ValueError:
+            pass
 
 class MainPage(webapp2.RequestHandler):
   """ Handler for the front page."""
@@ -119,19 +139,20 @@ class Temperature(webapp2.RequestHandler):
     # Temperature
 
     def get(self):
-        qry = ArduinoSensorData.query().order(-ArduinoSensorData.lastupdate).fetch(1)
         
         user = users.get_current_user()
         parent = ndb.Key('Persons', users.get_current_user().email())
         person = parent.get()
 
         if user:  # signed in already
+            sense = ArduinoSensorData.get_or_insert('1')
             template_values = {
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
-                'temperature': qry.temperature,
+                'person': person,
+                'temp': str(sense.temp),
                 'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
-                'datetimeLastUpdate': qry.lastupdate.strftime("%d %b %y, %I.%M.%S %p"),
+                'datetimeLastUpdate': (sense.lastupdate + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 }
             template = jinja_environment.get_template('temperature.html')
             self.response.out.write(template.render(template_values))
@@ -151,7 +172,7 @@ class Light(webapp2.RequestHandler):
             template_values = {
                 'light': str(sense.light),
                 'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
-                'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
+                'datetimeLastUpdate': (sense.lastupdate + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
             }
@@ -167,7 +188,7 @@ class Motion(webapp2.RequestHandler):
         user = users.get_current_user()
         parent = ndb.Key('Persons', users.get_current_user().email())
         person = parent.get()
-        
+
         if user:  # signed in already
             sense = ArduinoSensorData.get_or_insert('1')
             if (sense.movement):
@@ -175,9 +196,9 @@ class Motion(webapp2.RequestHandler):
             else: 
                 motionStatusString = "not present"
             template_values = {
-                'datetimeLastMovement': str(sense.lastmovement.strftime("%d %b %y, %I.%M.%S %p")),
+                'datetimeLastMovement': (sense.lastmovement + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'datetime': (datetime.datetime.now() + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
-                'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
+                'datetimeLastUpdate': (sense.lastupdate + datetime.timedelta(hours=person.time_zone)).strftime("%d %b %y, %I.%M.%S %p"),
                 'motionStatusString': motionStatusString,
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
