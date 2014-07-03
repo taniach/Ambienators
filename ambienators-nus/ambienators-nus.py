@@ -1,24 +1,105 @@
-import webapp2
-import jinja2
+import datetime
+
 import os
+import urllib
 
 from google.appengine.api import users
+from google.appengine.ext import ndb
 
+import jinja2
+import webapp2
 
 jinja_environment = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(os.path.dirname(__file__) + "/templates"))
+    loader=jinja2.FileSystemLoader(os.path.dirname(__file__) + "/templates"),
+    extensions=['jinja2.ext.autoescape'],
+    autoescape=True)
+
+class Persons(ndb.Model):
+    # celsius, fahrenheit or kelvin
+    temperature_unit = ndb.StringProperty()
+
+    # By time or by parameters 
+    notify_type = ndb.StringProperty(repeated=True)
+
+    # If notify by time
+    notify_time_value = ndb.IntegerProperty()
+    notify_time_unit = ndb.StringProperty()
+
+    # If notify by parameters
+    notify_parameters = ndb.StringProperty(repeated=True)
+
+    # Notify by temperature
+    notify_temperature_abe = ndb.StringProperty() # above, below, exactly
+    notify_temperature_value = ndb.IntegerProperty()
+    notify_temperature_unit = ndb.StringProperty()
+
+    # Notify by light intensity
+    notify_light_abe = ndb.StringProperty() # above, below, exactly
+    notify_light_value = ndb.IntegerProperty()
+
+    # Notify by motion
+    notify_motion = ndb.StringProperty()
+
+    # How often to record history
+    history_log_value = ndb.IntegerProperty()
+    history_log_unit = ndb.StringProperty()
+
+    # Number of readings to display
+    num_readings = ndb.IntegerProperty()
+ 
+class ArduinoSensorData(ndb.Model):
+    temperature = ndb.FloatProperty()
+    lastupdate = ndb.DateTimeProperty(auto_now_add=True)
+
+ 
+class ArduinoPost(webapp2.RequestHandler):
+    def post(self):
+        sensordata = ArduinoSensorData(temperature=self.request.get('temp'))
+        sensordata.put()
 
 class MainPage(webapp2.RequestHandler):
   """ Handler for the front page."""
   def get(self):
-      template = jinja_environment.get_template('front.html')
-      self.response.out.write(template.render())
+        template = jinja_environment.get_template('front.html')
+        self.response.write(template.render())
+
 
 class MainPageUser(webapp2.RequestHandler):
     # Front page for those logged in
 
     def get(self):
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+
+        if person == None:
+            person = Persons(id=users.get_current_user().email())
+
+            person.temperature_unit = 'celsius'
+
+            person.notify_type = ['by-time']
+
+            person.notify_time_value = 4
+            person.notify_time_unit = 'days'
+
+            person.notify_parameters = ['by-temp']
+
+            person.notify_temperature_abe = 'exactly'
+            person.notify_temperature_value = 20
+            person.notify_temperature_unit = 'celsius'
+
+            person.notify_light_abe = 'above'
+            person.notify_light_value = 90
+
+            person.notify_motion = 'present'
+
+            person.num_readings = 5
+
+            person.history_log_value = 2
+            person.history_log_unit = 'days'
+
+            person.put()
+
         if user:  # signed in already
             template_values = {
                 'user_mail': users.get_current_user().email(),
@@ -33,12 +114,17 @@ class Temperature(webapp2.RequestHandler):
     # Temperature
 
     def get(self):
+        qry = ArduinoSensorData.query().order(-ArduinoSensorData.lastupdate).fetch(1)
+        
         user = users.get_current_user()
         if user:  # signed in already
             template_values = {
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
-            }
+                'temperature': qry.temperature,
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetimeLastUpdate': qry.lastupdate.strftime("%d %b %y, %I.%M.%S %p"),
+                }
             template = jinja_environment.get_template('temperature.html')
             self.response.out.write(template.render(template_values))
         else:
@@ -50,7 +136,12 @@ class Light(webapp2.RequestHandler):
     def get(self):
         user = users.get_current_user()
         if user:  # signed in already
+            sense = ArduinoSensorData.get_or_insert('1')
             template_values = {
+                'listToRowData': listToRowData(sense.list),
+                'light': str(sense.light),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
             }
@@ -65,7 +156,16 @@ class Motion(webapp2.RequestHandler):
     def get(self):
         user = users.get_current_user()
         if user:  # signed in already
+            sense = ArduinoSensorData.get_or_insert('1')
+            if (sense.movement):
+                motionStatusString = "present"
+            else: 
+                motionStatusString = "not present"
             template_values = {
+                'datetimeLastMovement': str(sense.lastmovement.strftime("%d %b %y, %I.%M.%S %p")),
+                'datetime': (datetime.datetime.now() + datetime.timedelta(hours=8)).strftime("%d %b %y, %I.%M.%S %p"),
+                'datetimeLastUpdate': str(sense.lastupdate.strftime("%d %b %y, %I.%M.%S %p")),
+                'motionStatusString': motionStatusString,
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
             }
@@ -79,10 +179,15 @@ class History(webapp2.RequestHandler):
 
     def get(self):
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+        
         if user:  # signed in already
             template_values = {
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
+                'person': person,
+                'datetime': datetime.datetime.now(),
             }
             template = jinja_environment.get_template('history.html')
             self.response.out.write(template.render(template_values))
@@ -95,17 +200,52 @@ class Settings(webapp2.RequestHandler):
 
     def get(self):
         user = users.get_current_user()
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+
         if user:  # signed in already
             template_values = {
                 'user_mail': users.get_current_user().email(),
                 'logout': users.create_logout_url(self.request.host_url),
+                'person': person,
             }
             template = jinja_environment.get_template('settings.html')
             self.response.out.write(template.render(template_values))
         else:
             self.redirect(self.request.host_url)
 
-      
+    def post(self):
+        parent = ndb.Key('Persons', users.get_current_user().email())
+        person = parent.get()
+
+        person.temperature_unit = self.request.get('select-temp-unit')
+
+        person.notify_type = self.request.get_all('notify-type')
+
+        person.notify_time_value = int(self.request.get('notify-time-value'))
+        person.notify_time_unit = self.request.get('notify-time-unit')
+
+        person.notify_parameters = self.request.get_all('parameter')
+
+        person.notify_temperature_abe = self.request.get('above-below-temp')
+        person.notify_temperature_value = int(self.request.get('notify-temp-val'))
+        person.notify_temperature_unit = self.request.get('notify-temp-unit')
+
+        person.notify_light_abe = self.request.get('above-below-light')
+        person.notify_light_value = int(self.request.get('notify-light-val'))
+
+        person.notify_motion = self.request.get('present-notpresent')
+
+        person.history_log_value = int(self.request.get('select-historylog-value'))
+        person.history_log_unit = self.request.get('select-historylog-unit')
+
+        person.num_readings = int(self.request.get('inputReadings'))
+
+        person.put()
+        self.redirect('/settings')
+
+
+    
 app = webapp2.WSGIApplication([('/', MainPage),
                                ('/mainuser', MainPageUser),
                                ('/temperature', Temperature),
